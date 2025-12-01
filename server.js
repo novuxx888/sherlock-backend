@@ -14,6 +14,17 @@ app.use(cors());
 app.use(express.json());
 
 app.use("/api", uploadImageRoute);
+app.get("/test/:cmd", (req, res) => {
+  const cmd = req.params.cmd;
+
+  if (!piSocket) {
+    return res.status(500).json({ error: "Pi not connected" });
+  }
+
+  piSocket.send(cmd);
+  res.json({ sent: cmd });
+});
+
 
 // Create actual HTTP server (needed for WS)
 const server = http.createServer(app);
