@@ -3,19 +3,8 @@ import cors from "cors";
 import http from "http";
 import { WebSocketServer } from "ws";
 import uploadImageRoute from "./routes/uploadImage.js";
+import { db } from "./firebase.js";  // << ONLY import, no initialize
 import admin from "firebase-admin";
-
-// -------------------------------
-// Firebase Admin Initialization
-// -------------------------------
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  storageBucket: process.env.STORAGE_BUCKET
-});
-
-const db = admin.firestore();
 
 // -------------------------------
 // Express HTTP Server
@@ -24,10 +13,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Routes
 app.use("/api", uploadImageRoute);
 
-// Create actual HTTP server (required for WebSocket)
+// Create actual HTTP server (needed for WS)
 const server = http.createServer(app);
 
 // -------------------------------
@@ -44,7 +32,7 @@ wss.on("connection", (ws) => {
     const msg = msgBuffer.toString();
     console.log("Received:", msg);
 
-    // 1. Identify Pi connection
+    // Pi identifies itself
     if (msg === "hello-from-pi") {
       piSocket = ws;
 
@@ -67,7 +55,7 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    // 2. If message is from the Pi
+    // Messages from Pi
     if (ws === piSocket) {
       await db.collection("logs").add({
         from: "pi",
@@ -77,14 +65,13 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    // 3. Messages from clients (your web app)
+    // Messages from Web App
     await db.collection("logs").add({
       from: "client",
       message: msg,
       timestamp: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    // Forward client command to Pi
     if (piSocket) {
       piSocket.send(msg);
     }
