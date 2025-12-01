@@ -1,0 +1,18 @@
+{
+  "name": "sherlock-backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "firebase-admin": "^13.6.0",
+    "multer": "^2.0.2",
+    "uuid": "^13.0.0",
+    "ws": "^8.18.3"
+  }
+}
