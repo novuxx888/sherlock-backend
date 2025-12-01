@@ -1,0 +1,5 @@
+firebase-key.json
+node_modules/
+.env
+firebase-key.json
+*.log
