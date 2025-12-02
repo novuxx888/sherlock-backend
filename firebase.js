@@ -1,16 +1,15 @@
+// firebase.js
 import admin from "firebase-admin";
-import fs from "fs";
 
-// Read JSON manually (Railway-safe)
-const serviceAccount = JSON.parse(
-  fs.readFileSync("./serviceAccountKey.json", "utf8")
-);
+// Load full JSON string from Railway environment variable
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
-// Initialize Firebase Admin
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  storageBucket: "smart-home-dashboard-dce4b.appspot.com" // ← your bucket
+  storageBucket: `${serviceAccount.project_id}.appspot.com`
 });
 
-export const db = admin.firestore();
-export const storageBucket = admin.storage().bucket();
+const db = admin.firestore();
+const bucket = admin.storage().bucket();
+
+export { admin, db, bucket };
