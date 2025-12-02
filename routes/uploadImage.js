@@ -1,32 +1,42 @@
-// routes/uploadImage.js
 import express from "express";
-import multer from "multer";
-import { bucket } from "../firebase.js";
+import { bucket, db } from "../firebase.js";
+import admin from "firebase-admin";
 
 const router = express.Router();
-const upload = multer({ dest: "/tmp" });
 
-router.post("/upload", upload.single("image"), async (req, res) => {
+router.post("/upload-image", async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: "No file received" });
+    const { imagePath, filename } = req.body;
 
-    const tempPath = req.file.path;
-    const filename = `captures/${Date.now()}_${req.file.originalname}`;
+    if (!imagePath || !filename) {
+      return res.status(400).json({ error: "Missing fields" });
+    }
 
-    // Upload file to bucket
-    await bucket.upload(tempPath, {
-      destination: filename,
-      contentType: req.file.mimetype,
-      metadata: { firebaseStorageDownloadTokens: Date.now() }
+    const destination = `captures/${filename}`;
+
+    await bucket.upload(imagePath, {
+      destination,
+      metadata: {
+        contentType: "image/jpeg",  // 🔥 FIX MIME TYPE
+        metadata: {
+          firebaseStorageDownloadTokens: Date.now().toString(),
+        },
+      },
     });
 
-    // Generate public URL
-    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+    const publicUrl =
+      `https://storage.googleapis.com/${bucket.name}/${destination}`;
+
+    // Save to Firestore
+    await db.collection("captures").add({
+      url: publicUrl,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
 
     return res.json({ ok: true, url: publicUrl });
 
   } catch (err) {
-    console.error("Upload error:", err);
+    console.error("Upload failed:", err);
     return res.status(500).json({ error: "Upload failed" });
   }
 });
