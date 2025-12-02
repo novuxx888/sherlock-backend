@@ -1,13 +1,10 @@
 import admin from "firebase-admin";
+import serviceAccount from "./serviceAccountKey.json" assert { type: "json" };
 
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    storageBucket: process.env.STORAGE_BUCKET
-  });
-}
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  storageBucket: "smart-home-dashboard-dce4b.appspot.com" // <-- your bucket
+});
 
 export const db = admin.firestore();
-export const bucket = admin.storage().bucket();
+export const storageBucket = admin.storage().bucket();

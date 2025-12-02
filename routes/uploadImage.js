@@ -1,56 +1,50 @@
 import express from "express";
 import multer from "multer";
+import { storageBucket } from "../firebase.js";
 import admin from "firebase-admin";
-import { db } from "../firebase.js"; // Your shared Firestore instance
+import { v4 as uuidv4 } from "uuid";
 
 const router = express.Router();
 
-// Multer stores file in memory (buffer) instead of filesystem
-const upload = multer({ storage: multer.memoryStorage() });
+// temp folder for receiving Pi image
+const upload = multer({ dest: "/tmp" });
 
-// ---------------------------------------------
-// POST /api/upload-image
-// ---------------------------------------------
 router.post("/upload-image", upload.single("image"), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: "No image uploaded" });
+      return res.status(400).json({ error: "No file uploaded" });
     }
 
-    const bucket = admin.storage().bucket();
+    const localPath = req.file.path;
+    const fileName = `captures/${uuidv4()}.jpg`;
+    const bucket = storageBucket;
 
-    // Generate filename
-    const filename = `captures/capture-${Date.now()}.jpg`;
-
-    // Upload buffer directly to Firebase Storage
-    const file = bucket.file(filename);
-
-    await file.save(req.file.buffer, {
+    await bucket.upload(localPath, {
+      destination: fileName,
       metadata: {
-        contentType: req.file.mimetype,
+        metadata: {
+          firebaseStorageDownloadTokens: uuidv4(),
+        },
       },
-      resumable: false,
     });
 
-    // Get public URL
-    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+    const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(fileName)}?alt=media`;
 
     // Save metadata to Firestore
-    await db.collection("captures").add({
-      url: publicUrl,
+    await admin.firestore().collection("captures").add({
+      url: downloadUrl,
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      source: "raspberry-pi-01",
     });
 
-    console.log("[UPLOAD] Saved image to Firebase:", publicUrl);
-
     return res.json({
-      ok: true,
-      url: publicUrl,
+      success: true,
+      url: downloadUrl,
     });
 
   } catch (err) {
-    console.error("Upload failed:", err);
-    return res.status(500).json({ error: "Upload failed", details: err.message });
+    console.error("Upload error:", err);
+    return res.status(500).json({ error: "Upload failed" });
   }
 });
 
