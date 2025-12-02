@@ -1,40 +1,51 @@
-// routes/uploadImage.js
 import express from "express";
-import fs from "fs";
+import multer from "multer";
 import { bucket, db } from "../firebase.js";
-import admin from "firebase-admin";
+import { v4 as uuidv4 } from "uuid";
 
 const router = express.Router();
 
-router.post("/upload-image", async (req, res) => {
-  try {
-    const { imagePath, filename } = req.body;
+// Multer handles file uploads
+const upload = multer({ storage: multer.memoryStorage() });
 
-    if (!imagePath || !filename) {
-      return res.status(400).json({ error: "Missing imagePath or filename" });
+// ------------------------------
+// POST /api/upload-image
+// ------------------------------
+router.post("/upload-image", upload.single("file"), async (req, res) => {
+  try {
+    // no req.body.imagePath anymore!
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
     }
 
-    console.log("Uploading:", filename);
+    const file = req.file;
+    const filename = `captures/${Date.now()}_${uuidv4()}.jpg`;
 
     // Upload to Firebase Storage
-    await bucket.upload(imagePath, {
-      destination: `captures/${filename}`,
+    const fileUpload = bucket.file(filename);
+
+    await fileUpload.save(file.buffer, {
       metadata: {
-        contentType: "image/jpeg",
+        contentType: file.mimetype,
+        metadata: {
+          firebaseStorageDownloadTokens: uuidv4(),
+        },
       },
     });
 
-    const publicUrl =
-      `https://storage.googleapis.com/${bucket.name}/captures/${filename}`;
+    // Generate public download URL
+    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
 
-    // Save Firestore record
+    // Store metadata in Firestore
     await db.collection("captures").add({
-      filename,
       url: publicUrl,
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
+      createdAt: new Date(),
     });
 
-    return res.json({ ok: true, url: publicUrl });
+    return res.json({
+      success: true,
+      url: publicUrl,
+    });
 
   } catch (err) {
     console.error("Upload failed:", err);
