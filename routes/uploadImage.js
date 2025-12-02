@@ -1,6 +1,5 @@
 import express from "express";
 import multer from "multer";
-import { storageBucket } from "../firebase.js";
 import admin from "firebase-admin";
 import { v4 as uuidv4 } from "uuid";
 
