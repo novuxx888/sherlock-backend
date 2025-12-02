@@ -1,12 +1,12 @@
 // firebase.js
 import admin from "firebase-admin";
 
-// Load full JSON string from Railway environment variable
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+const bucketName = process.env.FIREBASE_STORAGE_BUCKET;
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  storageBucket: `${serviceAccount.project_id}.appspot.com`
+  storageBucket: bucketName  // <-- IMPORTANT
 });
 
 const db = admin.firestore();
