@@ -1,55 +1,59 @@
+// routes/uploadImage.js
 import express from "express";
 import multer from "multer";
-import { bucket, db } from "../firebase.js";
-import { v4 as uuidv4 } from "uuid";
+import { bucket, db, admin } from "../firebase.js";
 
 const router = express.Router();
 
-// Multer handles file uploads
+// Multer to read file upload
 const upload = multer({ storage: multer.memoryStorage() });
 
-// ------------------------------
-// POST /api/upload-image
-// ------------------------------
-router.post("/upload-image", upload.single("file"), async (req, res) => {
+router.post("/upload", upload.single("image"), async (req, res) => {
   try {
-    // no req.body.imagePath anymore!
     if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
+      return res.status(400).json({ error: "No image file sent." });
     }
 
-    const file = req.file;
-    const filename = `captures/${Date.now()}_${uuidv4()}.jpg`;
+    // File path in Firebase Storage
+    const filename = `captures/${Date.now()}_capture.jpg`;
 
     // Upload to Firebase Storage
-    const fileUpload = bucket.file(filename);
+    const file = bucket.file(filename);
 
-    await fileUpload.save(file.buffer, {
+    await file.save(req.file.buffer, {
       metadata: {
-        contentType: file.mimetype,
+        contentType: req.file.mimetype,
         metadata: {
-          firebaseStorageDownloadTokens: uuidv4(),
+          firebaseStorageDownloadTokens: Date.now().toString(),
         },
       },
     });
 
-    // Generate public download URL
-    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+    // Force-update metadata so token is available
+    const [metadata] = await file.getMetadata();
+    const token = metadata.metadata.firebaseStorageDownloadTokens;
 
-    // Store metadata in Firestore
-    await db.collection("captures").add({
-      url: publicUrl,
-      createdAt: new Date(),
+    // Construct Firebase-native download URL
+    const downloadURL =
+      `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/` +
+      `${encodeURIComponent(filename)}?alt=media&token=${token}`;
+
+    // Save Firestore entry
+    const docRef = await db.collection("captures").add({
+      storagePath: filename,
+      downloadURL,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
     return res.json({
       success: true,
-      url: publicUrl,
+      id: docRef.id,
+      storagePath: filename,
+      downloadURL,
     });
-
   } catch (err) {
-    console.error("Upload failed:", err);
-    return res.status(500).json({ error: err.message });
+    console.error("Upload error:", err);
+    return res.status(500).json({ error: err.toString() });
   }
 });
 
