@@ -1,48 +1,37 @@
+// routes/uploadImage.js
 import express from "express";
-import multer from "multer";
+import fs from "fs";
 import { bucket, db } from "../firebase.js";
-import { v4 as uuidv4 } from "uuid";
+import admin from "firebase-admin";
 
 const router = express.Router();
 
-// Multer stores file in memory
-const upload = multer({ storage: multer.memoryStorage() });
-
-// -----------------------------------------------------
-// POST /api/upload-image   <-- MUST MATCH PI
-// -----------------------------------------------------
-router.post("/upload-image", upload.single("image"), async (req, res) => {
+router.post("/upload-image", async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
+    const { imagePath, filename } = req.body;
+
+    if (!imagePath || !filename) {
+      return res.status(400).json({ error: "Missing imagePath or filename" });
     }
 
-    const file = req.file;
-    const filename = `captures/${Date.now()}_${uuidv4()}.jpg`;
+    console.log("Uploading:", filename);
 
-    const token = uuidv4();
-    const fileUpload = bucket.file(filename);
-
-    await fileUpload.save(file.buffer, {
+    // Upload to Firebase Storage
+    await bucket.upload(imagePath, {
+      destination: `captures/${filename}`,
       metadata: {
-        contentType: file.mimetype,
-        metadata: {
-          firebaseStorageDownloadTokens: token,
-        },
+        contentType: "image/jpeg",
       },
     });
 
-    // Correct Firebase public URL
-    const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(
-      filename
-    )}?alt=media&token=${token}`;
+    const publicUrl =
+      `https://storage.googleapis.com/${bucket.name}/captures/${filename}`;
 
-    // Store Firestore doc
+    // Save Firestore record
     await db.collection("captures").add({
+      filename,
       url: publicUrl,
-      storagePath: filename,
-      token,
-      createdAt: new Date(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
     return res.json({ ok: true, url: publicUrl });
