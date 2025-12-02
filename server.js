@@ -1,3 +1,5 @@
+console.log("Using bucket:", process.env.FIREBASE_STORAGE_BUCKET);
+
 import express from "express";
 import cors from "cors";
 import http from "http";
