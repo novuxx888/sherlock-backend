@@ -1,40 +1,53 @@
 // routes/uploadImage.js
 import express from "express";
-import multer from "multer";
-import admin from "firebase-admin";
-import path from "path";
-import fs from "fs";
+import { bucket, db } from "../firebase.js";
+import { v4 as uuidv4 } from "uuid";
 
 const router = express.Router();
 
-// Multer temp storage
-const upload = multer({ dest: "/tmp" });
-
-// Upload endpoint
-router.post("/upload", upload.single("image"), async (req, res) => {
+// Must parse raw binary
+router.post("/upload", async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
+    if (!req.body || req.body.length === 0) {
+      return res.status(400).json({ error: "No image data" });
     }
 
-    const bucket = admin.storage().bucket(); // uses default bucket
-    const destination = `captures/${Date.now()}-${req.file.originalname}`;
+    const imageBuffer = req.body; // raw bytes from Raspberry Pi
+    const id = uuidv4();
+    const fileName = `captures/${id}.jpg`;
+    const file = bucket.file(fileName);
 
-    // Upload to Firebase Storage
-    await bucket.upload(req.file.path, { destination });
+    console.log("[BACKEND] Uploading received image...");
 
-    // Make it public (optional)
-    await bucket.file(destination).makePublic();
+    await file.save(imageBuffer, {
+      metadata: {
+        contentType: "image/jpeg",
+      },
+      public: true,
+    });
 
-    const url = `https://storage.googleapis.com/${bucket.name}/${destination}`;
+    // Generate public URL
+    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
 
-    // Clean tmp
-    fs.unlinkSync(req.file.path);
+    console.log("[BACKEND] Upload complete:", publicUrl);
 
-    res.json({ url });
+    // Save metadata to Firestore
+    await db.collection("captures").doc(id).set({
+      id,
+      fileName,
+      url: publicUrl,
+      timestamp: Date.now(),
+    });
+
+    res.json({
+      ok: true,
+      url: publicUrl,
+      fileName,
+    });
+
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Upload failed", details: err.message });
+    console.error("[UPLOAD ERROR]", err);
+    res.status(500).json({ error: "Upload failed", details: err.toString() });
   }
 });
 
