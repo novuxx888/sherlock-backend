@@ -1,45 +1,29 @@
+// routes/uploadImage.js
 import express from "express";
 import multer from "multer";
-import admin from "firebase-admin";
-import { v4 as uuidv4 } from "uuid";
+import { bucket } from "../firebase.js";
 
 const router = express.Router();
-
-// temp folder for receiving Pi image
 const upload = multer({ dest: "/tmp" });
 
-router.post("/upload-image", upload.single("image"), async (req, res) => {
+router.post("/upload", upload.single("image"), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
+    if (!req.file) return res.status(400).json({ error: "No file received" });
 
-    const localPath = req.file.path;
-    const fileName = `captures/${uuidv4()}.jpg`;
-    const bucket = storageBucket;
+    const tempPath = req.file.path;
+    const filename = `captures/${Date.now()}_${req.file.originalname}`;
 
-    await bucket.upload(localPath, {
-      destination: fileName,
-      metadata: {
-        metadata: {
-          firebaseStorageDownloadTokens: uuidv4(),
-        },
-      },
+    // Upload file to bucket
+    await bucket.upload(tempPath, {
+      destination: filename,
+      contentType: req.file.mimetype,
+      metadata: { firebaseStorageDownloadTokens: Date.now() }
     });
 
-    const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(fileName)}?alt=media`;
+    // Generate public URL
+    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
 
-    // Save metadata to Firestore
-    await admin.firestore().collection("captures").add({
-      url: downloadUrl,
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      source: "raspberry-pi-01",
-    });
-
-    return res.json({
-      success: true,
-      url: downloadUrl,
-    });
+    return res.json({ ok: true, url: publicUrl });
 
   } catch (err) {
     console.error("Upload error:", err);
