@@ -1,57 +1,54 @@
-// routes/uploadImage.js
 import express from "express";
+import multer from "multer";
 import { bucket, db } from "../firebase.js";
-import admin from "firebase-admin";
-import fs from "fs";
+import { v4 as uuidv4 } from "uuid";
 
 const router = express.Router();
 
-// Make sure Express can read JSON bodies
-router.use(express.json());
+// Multer handles file uploads
+const upload = multer({ storage: multer.memoryStorage() });
 
-router.post("/upload-image", async (req, res) => {
+// ------------------------------
+// POST /api/upload-image
+// ------------------------------
+router.post("/upload-image", upload.single("file"), async (req, res) => {
   try {
-    const { imagePath, filename } = req.body;
-
-    if (!imagePath || !filename) {
-      return res.status(400).json({ error: "Missing imagePath or filename" });
+    // no req.body.imagePath anymore!
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
     }
 
-    console.log("📤 Uploading from Pi:", imagePath);
-    console.log("➡️ Storing as:", `captures/${filename}`);
+    const file = req.file;
+    const filename = `captures/${Date.now()}_${uuidv4()}.jpg`;
 
-    // Verify file exists before upload
-    if (!fs.existsSync(imagePath)) {
-      return res.status(404).json({ error: "Pi file not found" });
-    }
+    // Upload to Firebase Storage
+    const fileUpload = bucket.file(filename);
 
-    await bucket.upload(imagePath, {
-      destination: `captures/${filename}`,
+    await fileUpload.save(file.buffer, {
       metadata: {
-        contentType: "image/jpeg",
+        contentType: file.mimetype,
         metadata: {
-          firebaseStorageDownloadTokens: filename
-        }
-      }
+          firebaseStorageDownloadTokens: uuidv4(),
+        },
+      },
     });
 
-    const publicUrl =
-      `https://storage.googleapis.com/${bucket.name}/captures/${filename}`;
+    // Generate public download URL
+    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
 
-    console.log("✅ Uploaded to:", publicUrl);
-
-    // Save Firestore document
+    // Store metadata in Firestore
     await db.collection("captures").add({
-      filename,
-      storagePath: `captures/${filename}`,
       url: publicUrl,
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
+      createdAt: new Date(),
     });
 
-    return res.json({ success: true, url: publicUrl });
+    return res.json({
+      success: true,
+      url: publicUrl,
+    });
 
   } catch (err) {
-    console.error("❌ Upload failed:", err);
+    console.error("Upload failed:", err);
     return res.status(500).json({ error: err.message });
   }
 });
