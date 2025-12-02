@@ -1,4 +1,6 @@
+// routes/uploadImage.js
 import express from "express";
+import fs from "fs";
 import { bucket, db } from "../firebase.js";
 import admin from "firebase-admin";
 
@@ -9,35 +11,34 @@ router.post("/upload-image", async (req, res) => {
     const { imagePath, filename } = req.body;
 
     if (!imagePath || !filename) {
-      return res.status(400).json({ error: "Missing fields" });
+      return res.status(400).json({ error: "Missing imagePath or filename" });
     }
 
-    const destination = `captures/${filename}`;
+    console.log("Uploading:", filename);
 
+    // Upload to Firebase Storage
     await bucket.upload(imagePath, {
-      destination,
+      destination: `captures/${filename}`,
       metadata: {
-        contentType: "image/jpeg",  // 🔥 FIX MIME TYPE
-        metadata: {
-          firebaseStorageDownloadTokens: Date.now().toString(),
-        },
+        contentType: "image/jpeg",
       },
     });
 
     const publicUrl =
-      `https://storage.googleapis.com/${bucket.name}/${destination}`;
+      `https://storage.googleapis.com/${bucket.name}/captures/${filename}`;
 
-    // Save to Firestore
+    // Save Firestore record
     await db.collection("captures").add({
+      filename,
       url: publicUrl,
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
     return res.json({ ok: true, url: publicUrl });
 
   } catch (err) {
     console.error("Upload failed:", err);
-    return res.status(500).json({ error: "Upload failed" });
+    return res.status(500).json({ error: err.message });
   }
 });
 
