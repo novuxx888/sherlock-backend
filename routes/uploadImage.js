@@ -1,50 +1,40 @@
+// routes/uploadImage.js
 import express from "express";
 import multer from "multer";
-import { storageBucket } from "../firebase.js";
 import admin from "firebase-admin";
-import { v4 as uuidv4 } from "uuid";
+import path from "path";
+import fs from "fs";
 
 const router = express.Router();
 
-// temp folder for receiving Pi image
+// Multer temp storage
 const upload = multer({ dest: "/tmp" });
 
-router.post("/upload-image", upload.single("image"), async (req, res) => {
+// Upload endpoint
+router.post("/upload", upload.single("image"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
     }
 
-    const localPath = req.file.path;
-    const fileName = `captures/${uuidv4()}.jpg`;
-    const bucket = storageBucket;
+    const bucket = admin.storage().bucket(); // uses default bucket
+    const destination = `captures/${Date.now()}-${req.file.originalname}`;
 
-    await bucket.upload(localPath, {
-      destination: fileName,
-      metadata: {
-        metadata: {
-          firebaseStorageDownloadTokens: uuidv4(),
-        },
-      },
-    });
+    // Upload to Firebase Storage
+    await bucket.upload(req.file.path, { destination });
 
-    const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(fileName)}?alt=media`;
+    // Make it public (optional)
+    await bucket.file(destination).makePublic();
 
-    // Save metadata to Firestore
-    await admin.firestore().collection("captures").add({
-      url: downloadUrl,
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      source: "raspberry-pi-01",
-    });
+    const url = `https://storage.googleapis.com/${bucket.name}/${destination}`;
 
-    return res.json({
-      success: true,
-      url: downloadUrl,
-    });
+    // Clean tmp
+    fs.unlinkSync(req.file.path);
 
+    res.json({ url });
   } catch (err) {
-    console.error("Upload error:", err);
-    return res.status(500).json({ error: "Upload failed" });
+    console.error(err);
+    res.status(500).json({ error: "Upload failed", details: err.message });
   }
 });
 
