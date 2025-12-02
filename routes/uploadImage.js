@@ -1,38 +1,43 @@
 import express from "express";
 import multer from "multer";
-import { bucket } from "../firebase.js";
 import { v4 as uuidv4 } from "uuid";
+import admin from "firebase-admin";
 
 const router = express.Router();
+
+// store uploaded images in memory, not disk
 const upload = multer({ storage: multer.memoryStorage() });
 
-router.post("/upload-image", upload.single("file"), async (req, res) => {
+router.post("/upload-image", upload.single("image"), async (req, res) => {
   try {
-    const file = req.file;
-    const filename = `pi_images/${Date.now()}-${uuidv4()}.jpg`;
+    if (!req.file) {
+      return res.status(400).json({ error: "No image received" });
+    }
 
-    const blob = bucket.file(filename);
-    const blobStream = blob.createWriteStream({
-      metadata: {
-        contentType: file.mimetype,
-      },
+    const bucket = admin.storage().bucket();
+    const filename = `captures/${uuidv4()}.jpg`;
+    const file = bucket.file(filename);
+
+    // Upload buffer to Firebase Storage
+    await file.save(req.file.buffer, {
+      metadata: { contentType: req.file.mimetype },
+      public: true,           // make image viewable directly
+      resumable: false
     });
 
-    blobStream.on("error", (err) => {
-      console.error(err);
-      res.status(500).json({ error: err.message });
+    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+
+    // Write Firestore record
+    await admin.firestore().collection("captures").add({
+      url: publicUrl,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    blobStream.on("finish", async () => {
-      await blob.makePublic();
-      const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
-      res.json({ ok: true, url: publicUrl });
-    });
-
-    blobStream.end(file.buffer);
+    return res.json({ ok: true, url: publicUrl });
 
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    console.error("Upload error:", err);
+    return res.status(500).json({ error: "Upload failed" });
   }
 });
 
